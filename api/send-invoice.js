@@ -14,29 +14,33 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Customer email is required' })
     }
 
-    const payload = {
+    const attachments = pdfBase64
+      ? [
+          {
+            filename: `${invoiceNumber || 'invoice'}.pdf`,
+            content: pdfBase64,
+          },
+        ]
+      : []
+
+    const { data, error } = await resend.emails.send({
       from: 'Baba Ji Parts <onboarding@resend.dev>',
       to: [to],
       subject: subject || `Invoice ${invoiceNumber || ''}`,
       text: message,
-    }
-
-    if (pdfBase64) {
-      payload.attachments = [
-        {
-          filename: `${invoiceNumber || 'invoice'}.pdf`,
-          content: pdfBase64,
-        },
-      ]
-    }
-
-    const { data, error } = await resend.emails.send(payload)
+      attachments,
+    })
 
     if (error) {
       return res.status(400).json({ error })
     }
 
-    return res.status(200).json({ success: true, data })
+    return res.status(200).json({
+      success: true,
+      attached: Boolean(pdfBase64),
+      pdfLength: pdfBase64 ? pdfBase64.length : 0,
+      data,
+    })
   } catch (error) {
     return res.status(500).json({ error: error.message })
   }
