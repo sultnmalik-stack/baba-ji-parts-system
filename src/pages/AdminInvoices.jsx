@@ -740,12 +740,40 @@ export default function AdminInvoices() {
     return newCustomer?.[0]?.id || null
   }
 
+  // ── UPDATED: sends invoice + items as JSON instead of pdfBase64 ──
   async function sendInvoiceEmail(createdInvoice, invoiceNumber) {
     if (!invoice.customer_email.trim()) {
       throw new Error('Customer email is missing.')
     }
 
-    const pdfBase64 = await generatePdfBase64(invoiceNumber)
+    const emailInvoice = {
+      ...invoice,
+      invoice_number: invoiceNumber,
+      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString(),
+      freight,
+      rounding,
+      subtotal,
+      gst,
+      total,
+      amount_paid: amountPaid,
+      balance_due: balanceDue,
+    }
+
+    const emailItems = items.map((item, index) => ({
+      line_no: index + 1,
+      source_type: item.source_type,
+      inventory_part_id: item.inventory_part_id,
+      location: item.location,
+      part_number: item.part_number,
+      description: item.description,
+      quantity: Number(item.quantity || 1),
+      qty_bo: Number(item.qty_bo || 0),
+      qty_supplied: Number(item.qty_supplied || 1),
+      unit_price: Number(item.unit_price || 0),
+      gst_code: item.gst_code || 'GST',
+      total: Number(item.quantity || 1) * Number(item.unit_price || 0),
+    }))
 
     const response = await fetch('/api/send-invoice', {
       method: 'POST',
@@ -755,7 +783,8 @@ export default function AdminInvoices() {
         subject: `Invoice ${invoiceNumber}`,
         message: emailMessage,
         invoiceNumber,
-        pdfBase64,
+        invoice: emailInvoice,
+        items: emailItems,
       }),
     })
 
