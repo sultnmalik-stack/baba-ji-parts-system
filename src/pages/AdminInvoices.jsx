@@ -740,11 +740,14 @@ export default function AdminInvoices() {
     return newCustomer?.[0]?.id || null
   }
 
-  // ── UPDATED: sends invoice + items as JSON instead of pdfBase64 ──
+  // Generates PDF on the client, then sends pdfBase64 + invoice + items to the API
   async function sendInvoiceEmail(createdInvoice, invoiceNumber) {
     if (!invoice.customer_email.trim()) {
       throw new Error('Customer email is missing.')
     }
+
+    // Generate the PDF attachment first
+    const pdfBase64 = await generatePdfBase64(invoiceNumber)
 
     const emailInvoice = {
       ...invoice,
@@ -783,8 +786,9 @@ export default function AdminInvoices() {
         subject: `Invoice ${invoiceNumber}`,
         message: emailMessage,
         invoiceNumber,
-        invoice: emailInvoice,
-        items: emailItems,
+        pdfBase64,       // ← PDF attachment for the email
+        invoice: emailInvoice, // ← structured data if your API needs it
+        items: emailItems,     // ← line items if your API needs it
       }),
     })
 
