@@ -182,9 +182,7 @@ export default function AdminInvoices() {
   const gst = total / 11
 
   const amountPaid =
-    invoice.payment_status === 'Paid'
-      ? total
-      : Number(invoice.amount_paid || 0)
+    invoice.payment_status === 'Paid' ? total : Number(invoice.amount_paid || 0)
 
   const balanceDue = Math.max(total - amountPaid, 0)
 
@@ -197,7 +195,155 @@ export default function AdminInvoices() {
     ).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
   }
 
-  function buildInvoiceHtml(invoiceNumber) {
+  function buildInvoiceStyles() {
+    return `
+      @page { size: A4 landscape; margin: 7mm; }
+
+      * {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+        color: #000;
+        background: #fff;
+        font-size: 10px;
+      }
+
+      .page {
+        width: 282mm;
+        min-height: 196mm;
+        background: #fff;
+        margin: 0 auto;
+      }
+
+      .top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .logo {
+        font-size: 42px;
+        font-weight: 900;
+        line-height: 0.85;
+        letter-spacing: 2px;
+      }
+
+      .company {
+        text-align: right;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+
+      .grid3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .box {
+        border: 1px solid #000;
+        min-height: 55px;
+        padding: 6px;
+        position: relative;
+        line-height: 1.25;
+      }
+
+      .label {
+        position: absolute;
+        top: -9px;
+        left: 0;
+        background: #fff;
+        border: 1px solid #000;
+        padding: 0 5px;
+        font-weight: 700;
+      }
+
+      .wide {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+        table-layout: fixed;
+      }
+
+      th, td {
+        border: 1px solid #000;
+        padding: 4px;
+        vertical-align: top;
+        word-break: break-word;
+        line-height: 1.2;
+      }
+
+      th {
+        font-weight: 800;
+        text-align: center;
+      }
+
+      .lines td {
+        height: 26px;
+      }
+
+      .bottom {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .terms {
+        border: 1px solid #000;
+        padding: 5px;
+        font-size: 7px;
+        line-height: 1.15;
+      }
+
+      .totals {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+        align-items: start;
+      }
+
+      .totalBox {
+        border: 1px solid #000;
+        text-align: center;
+        font-weight: 900;
+        font-size: 14px;
+      }
+
+      .totalBox div:first-child {
+        background: #eee;
+        border-bottom: 1px solid #000;
+        padding: 4px;
+      }
+
+      .totalBox div:last-child {
+        padding: 8px 4px;
+      }
+
+      .sign {
+        margin-top: 22px;
+        text-align: center;
+        font-weight: 700;
+      }
+    `
+  }
+
+  function buildInvoiceBody(invoiceNumber) {
     const rows = items
       .map((item, index) => {
         const itemTotal = Number(item.quantity || 1) * Number(item.unit_price || 0)
@@ -220,160 +366,173 @@ export default function AdminInvoices() {
       })
       .join('')
 
+    const emptyRows = Array.from({ length: Math.max(6 - items.length, 0) })
+      .map(
+        () => `
+          <tr>
+            <td>&nbsp;</td><td></td><td></td><td></td><td></td>
+            <td></td><td></td><td></td><td></td><td></td><td></td>
+          </tr>
+        `
+      )
+      .join('')
+
+    return `
+      <div class="page">
+        <div class="top">
+          <div class="logo">BABA JI<br/>PARTS</div>
+
+          <div class="company">
+            MELBOURNE AUTO WRECKING PTY LTD TRADING AS BABA JI PARTS<br/>
+            ACN 672 278 063 &nbsp; ABN 30 672 278 063<br/>
+            82 HORNE STREET, CAMPBELLFIELD, VIC, 3061<br/>
+            TEL: 03 9359 2061 &nbsp; MOB: 0430 099 873<br/>
+            sales@babajipartsmelb.com.au<br/>
+            www.babajipartsmelb.com.au<br/>
+            Bank details - BSB: 083004 &nbsp; Account number: 932633780
+          </div>
+        </div>
+
+        <div class="grid3">
+          <div class="box">
+            <div class="label">Customer</div>
+            ${invoice.customer_name || ''}<br/>
+            ${invoice.customer_phone || ''}<br/>
+            ${invoice.customer_email || ''}<br/>
+            ${invoice.customer_address || ''}
+          </div>
+
+          <div class="box">
+            <div class="label">Deliver To</div>
+            ${invoice.delivery_address || 'Pickup / Delivery TBC'}<br/><br/>
+            PLEASE NOTE THAT PRICES ARE SUBJECT TO CHANGE WITHOUT NOTICE.
+          </div>
+
+          <div class="box">
+            <div class="label">Invoice Info</div>
+            Inv No: ${invoiceNumber}<br/>
+            Date: ${new Date().toLocaleDateString()}<br/>
+            Time: ${new Date().toLocaleTimeString()}<br/>
+            Pay Type: ${invoice.payment_method || 'TBC'}<br/>
+            Status: ${invoice.payment_status || 'Unpaid'}
+          </div>
+        </div>
+
+        <div class="wide">
+          <div class="box">
+            <div class="label">Note</div>
+            ${invoice.note || ''}
+          </div>
+
+          <div class="box">
+            <div class="label">Payment</div>
+            Paid: $${Number(amountPaid || 0).toFixed(2)}<br/>
+            Balance: $${Number(balanceDue || 0).toFixed(2)}
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Line No</th>
+              <th>Location</th>
+              <th>Part Number</th>
+              <th>Description</th>
+              <th>Ordered</th>
+              <th>B.O.</th>
+              <th>Supplied</th>
+              <th>Unit List</th>
+              <th>Unit Net</th>
+              <th>GST Code</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+
+          <tbody class="lines">
+            ${rows}
+            ${emptyRows}
+          </tbody>
+        </table>
+
+        <div class="bottom">
+          <div class="terms">
+            <b>Please Note:</b> No return on electrical parts. No return on special orders.
+            Engines and gearboxes must be checked before fitting. No labour claims accepted.
+            Parts must be inspected before installation. Deposits may be non-refundable.
+            Warranty applies only where expressly stated on invoice.
+          </div>
+
+          <div>
+            <div class="totals">
+              <div class="totalBox"><div>Sub-Total</div><div>$${subtotal.toFixed(2)}</div></div>
+              <div class="totalBox"><div>Freight</div><div>$${freight.toFixed(2)}</div></div>
+              <div class="totalBox"><div>Rounding</div><div>$${rounding.toFixed(2)}</div></div>
+              <div class="totalBox"><div>GST</div><div>$${gst.toFixed(2)}</div></div>
+              <div class="totalBox"><div>TOTAL</div><div>$${total.toFixed(2)}</div></div>
+            </div>
+
+            <div class="sign">
+              Please sign here ____________________________________________
+            </div>
+          </div>
+        </div>
+      </div>
+    `
+  }
+
+  function buildInvoiceHtml(invoiceNumber) {
     return `
       <html>
         <head>
           <title>${invoiceNumber}</title>
-          <style>
-            @page { size: A4 landscape; margin: 7mm; }
-            body { font-family: Arial, sans-serif; color: #000; font-size: 10px; }
-            .page { width: 100%; }
-            .top { display: flex; justify-content: space-between; align-items: flex-start; }
-            .logo { font-size: 42px; font-weight: 900; line-height: 0.85; letter-spacing: 2px; }
-            .company { text-align: right; font-size: 10px; font-weight: 700; }
-            .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
-            .box { border: 1px solid #000; min-height: 55px; padding: 6px; position: relative; }
-            .label { position: absolute; top: -9px; left: 0; background: white; border: 1px solid #000; padding: 0 5px; font-weight: 700; }
-            .wide { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            th, td { border: 1px solid #000; padding: 4px; vertical-align: top; }
-            th { font-weight: 800; text-align: center; }
-            .lines td { height: 24px; }
-            .bottom { display: grid; grid-template-columns: 1.3fr 1fr; gap: 8px; margin-top: 8px; }
-            .terms { border: 1px solid #000; padding: 5px; font-size: 7px; line-height: 1.15; }
-            .totals { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; align-items: start; }
-            .totalBox { border: 1px solid #000; text-align: center; font-weight: 900; font-size: 14px; }
-            .totalBox div:first-child { background: #eee; border-bottom: 1px solid #000; padding: 4px; }
-            .totalBox div:last-child { padding: 8px 4px; }
-            .sign { margin-top: 22px; text-align: center; font-weight: 700; }
-          </style>
+          <style>${buildInvoiceStyles()}</style>
         </head>
-
         <body>
-          <div class="page">
-            <div class="top">
-              <div class="logo">BABA JI<br/>PARTS</div>
-              <div class="company">
-                MELBOURNE AUTO WRECKING PTY LTD TRADING AS BABA JI PARTS<br/>
-                ACN 672 278 063 &nbsp; ABN 30 672 278 063<br/>
-                82 HORNE STREET, CAMPBELLFIELD, VIC, 3061<br/>
-                TEL: 03 9359 2061 &nbsp; MOB: 0430 099 873<br/>
-                sales@babajipartsmelb.com.au<br/>
-                www.babajipartsmelb.com.au<br/>
-                Bank details - BSB: 083004 &nbsp; Account number: 932633780
-              </div>
-            </div>
-
-            <div class="grid3">
-              <div class="box">
-                <div class="label">Customer</div>
-                ${invoice.customer_name}<br/>
-                ${invoice.customer_phone}<br/>
-                ${invoice.customer_email}<br/>
-                ${invoice.customer_address}
-              </div>
-
-              <div class="box">
-                <div class="label">Deliver To</div>
-                ${invoice.delivery_address || 'Pickup / Delivery TBC'}<br/><br/>
-                PLEASE NOTE THAT PRICES ARE SUBJECT TO CHANGE WITHOUT NOTICE.
-              </div>
-
-              <div class="box">
-                <div class="label">Invoice Info</div>
-                Inv No: ${invoiceNumber}<br/>
-                Date: ${new Date().toLocaleDateString()}<br/>
-                Time: ${new Date().toLocaleTimeString()}<br/>
-                Pay Type: ${invoice.payment_method || 'TBC'}<br/>
-                Status: ${invoice.payment_status || 'Unpaid'}
-              </div>
-            </div>
-
-            <div class="wide">
-              <div class="box">
-                <div class="label">Note</div>
-                ${invoice.note || ''}
-              </div>
-              <div class="box">
-                <div class="label">Payment</div>
-                Paid: $${Number(amountPaid || 0).toFixed(2)}<br/>
-                Balance: $${Number(balanceDue || 0).toFixed(2)}
-              </div>
-            </div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Line No</th>
-                  <th>Location</th>
-                  <th>Part Number</th>
-                  <th>Description</th>
-                  <th>Ordered</th>
-                  <th>B.O.</th>
-                  <th>Supplied</th>
-                  <th>Unit List</th>
-                  <th>Unit Net</th>
-                  <th>GST Code</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody class="lines">
-                ${rows}
-                ${Array.from({ length: Math.max(6 - items.length, 0) })
-                  .map(
-                    () => `
-                    <tr>
-                      <td>&nbsp;</td><td></td><td></td><td></td><td></td>
-                      <td></td><td></td><td></td><td></td><td></td><td></td>
-                    </tr>
-                  `
-                  )
-                  .join('')}
-              </tbody>
-            </table>
-
-            <div class="bottom">
-              <div class="terms">
-                <b>Please Note:</b> No return on electrical parts. No return on special orders.
-                Engines and gearboxes must be checked before fitting. No labour claims accepted.
-                Parts must be inspected before installation. Deposits may be non-refundable.
-                Warranty applies only where expressly stated on invoice.
-              </div>
-
-              <div>
-                <div class="totals">
-                  <div class="totalBox"><div>Sub-Total</div><div>$${subtotal.toFixed(2)}</div></div>
-                  <div class="totalBox"><div>Freight</div><div>$${freight.toFixed(2)}</div></div>
-                  <div class="totalBox"><div>Rounding</div><div>$${rounding.toFixed(2)}</div></div>
-                  <div class="totalBox"><div>GST</div><div>$${gst.toFixed(2)}</div></div>
-                  <div class="totalBox"><div>TOTAL</div><div>$${total.toFixed(2)}</div></div>
-                </div>
-
-                <div class="sign">
-                  Please sign here ____________________________________________
-                </div>
-              </div>
-            </div>
-          </div>
+          ${buildInvoiceBody(invoiceNumber)}
         </body>
       </html>
     `
   }
 
   async function generatePdfBase64(invoiceNumber) {
-    const wrapper = document.createElement('div')
-    wrapper.innerHTML = buildInvoiceHtml(invoiceNumber)
+    const element = document.createElement('div')
+    element.style.position = 'fixed'
+    element.style.left = '-10000px'
+    element.style.top = '0'
+    element.style.width = '282mm'
+    element.style.background = '#fff'
+    element.innerHTML = `
+      <style>${buildInvoiceStyles()}</style>
+      ${buildInvoiceBody(invoiceNumber)}
+    `
+
+    document.body.appendChild(element)
 
     const dataUriString = await html2pdf()
       .set({
-        margin: 0,
+        margin: [7, 7, 7, 7],
         filename: `${invoiceNumber}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        image: { type: 'jpeg', quality: 1 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 1200,
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'landscape',
+          compress: true,
+        },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       })
-      .from(wrapper)
+      .from(element)
       .outputPdf('datauristring')
+
+    document.body.removeChild(element)
 
     return dataUriString.split(',')[1]
   }
@@ -526,10 +685,7 @@ export default function AdminInvoices() {
         total: Number(item.quantity || 1) * Number(item.unit_price || 0),
       }))
 
-      const { error: itemsError } = await supabase
-        .from('invoice_items')
-        .insert(invoiceItems)
-
+      const { error: itemsError } = await supabase.from('invoice_items').insert(invoiceItems)
       if (itemsError) throw itemsError
 
       if (markSold) {
@@ -538,10 +694,7 @@ export default function AdminInvoices() {
           .map((item) => item.inventory_part_id)
 
         if (inventoryIds.length > 0) {
-          await supabase
-            .from('parts')
-            .update({ status: 'Sold' })
-            .in('id', inventoryIds)
+          await supabase.from('parts').update({ status: 'Sold' }).in('id', inventoryIds)
         }
       }
 
@@ -712,11 +865,7 @@ export default function AdminInvoices() {
           </div>
 
           <label className="mt-4 flex gap-2 text-sm text-gray-300">
-            <input
-              type="checkbox"
-              checked={markSold}
-              onChange={(e) => setMarkSold(e.target.checked)}
-            />
+            <input type="checkbox" checked={markSold} onChange={(e) => setMarkSold(e.target.checked)} />
             Mark inventory parts as sold after invoice
           </label>
         </div>
@@ -736,7 +885,8 @@ export default function AdminInvoices() {
               const vehicle = getVehicle(part.vehicle_id)
               return (
                 <option key={part.id} value={part.id}>
-                  {part.stock_number} — {part.part_name || part.part_type} — {vehicle?.year} {vehicle?.make} {vehicle?.model} — ${part.price || 0}
+                  {part.stock_number} — {part.part_name || part.part_type} — {vehicle?.year}{' '}
+                  {vehicle?.make} {vehicle?.model} — ${part.price || 0}
                 </option>
               )
             })}
