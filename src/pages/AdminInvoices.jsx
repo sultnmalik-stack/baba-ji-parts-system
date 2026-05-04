@@ -494,6 +494,7 @@ export default function AdminInvoices() {
     `
   }
 
+  // Used only for the print flow — not called during email anymore
   async function generatePdfBase64(invoiceNumber) {
     const element = document.createElement('div')
 
@@ -740,14 +741,11 @@ export default function AdminInvoices() {
     return newCustomer?.[0]?.id || null
   }
 
-  // Generates PDF on the client, then sends pdfBase64 + invoice + items to the API
+  // PDF is now generated server-side — just send invoice + items as JSON
   async function sendInvoiceEmail(createdInvoice, invoiceNumber) {
     if (!invoice.customer_email.trim()) {
       throw new Error('Customer email is missing.')
     }
-
-    // Generate the PDF attachment first
-    const pdfBase64 = await generatePdfBase64(invoiceNumber)
 
     const emailInvoice = {
       ...invoice,
@@ -786,9 +784,8 @@ export default function AdminInvoices() {
         subject: `Invoice ${invoiceNumber}`,
         message: emailMessage,
         invoiceNumber,
-        pdfBase64,       // ← PDF attachment for the email
-        invoice: emailInvoice, // ← structured data if your API needs it
-        items: emailItems,     // ← line items if your API needs it
+        invoice: emailInvoice,
+        items: emailItems,
       }),
     })
 
