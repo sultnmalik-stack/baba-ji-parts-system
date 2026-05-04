@@ -12,7 +12,7 @@ function getGreeting() {
 function generateEmailMessage() {
   return `${getGreeting()},
 
-Please find attached your invoice for today’s purchase.
+Please find attached your invoice for today's purchase.
 
 If you require any additional parts, feel free to contact us.
 
@@ -500,24 +500,167 @@ export default function AdminInvoices() {
     element.style.position = 'fixed'
     element.style.left = '0'
     element.style.top = '0'
-    element.style.width = '282mm'
+    element.style.width = '1123px'
+    element.style.minHeight = '794px'
     element.style.background = '#ffffff'
-    element.style.zIndex = '9999'
-    element.style.opacity = '1'
+    element.style.zIndex = '999999'
+    element.style.padding = '26px'
+    element.style.boxSizing = 'border-box'
     element.style.pointerEvents = 'none'
 
     element.innerHTML = `
-      <style>${buildInvoiceStyles()}</style>
+      <style>
+        * {
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
+        .page {
+          width: 1071px !important;
+          min-height: 742px !important;
+          background: #ffffff !important;
+          color: #000000 !important;
+          font-family: Arial, sans-serif !important;
+          font-size: 10px !important;
+          margin: 0 !important;
+        }
+
+        .top {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+
+        .logo {
+          font-size: 42px;
+          font-weight: 900;
+          line-height: 0.85;
+          letter-spacing: 2px;
+        }
+
+        .company {
+          text-align: right;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 1.25;
+        }
+
+        .grid3 {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
+        .box {
+          border: 1px solid #000;
+          min-height: 55px;
+          padding: 6px;
+          position: relative;
+          line-height: 1.25;
+        }
+
+        .label {
+          position: absolute;
+          top: -9px;
+          left: 0;
+          background: #fff;
+          border: 1px solid #000;
+          padding: 0 5px;
+          font-weight: 700;
+        }
+
+        .wide {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin-top: 8px;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 8px;
+          table-layout: fixed;
+        }
+
+        th, td {
+          border: 1px solid #000;
+          padding: 4px;
+          vertical-align: top;
+          word-break: break-word;
+          line-height: 1.2;
+        }
+
+        th {
+          font-weight: 800;
+          text-align: center;
+        }
+
+        .lines td {
+          height: 26px;
+        }
+
+        .bottom {
+          display: grid;
+          grid-template-columns: 1.3fr 1fr;
+          gap: 8px;
+          margin-top: 8px;
+        }
+
+        .terms {
+          border: 1px solid #000;
+          padding: 5px;
+          font-size: 7px;
+          line-height: 1.15;
+        }
+
+        .totals {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 6px;
+          align-items: start;
+        }
+
+        .totalBox {
+          border: 1px solid #000;
+          text-align: center;
+          font-weight: 900;
+          font-size: 14px;
+        }
+
+        .totalBox div:first-child {
+          background: #eee;
+          border-bottom: 1px solid #000;
+          padding: 4px;
+        }
+
+        .totalBox div:last-child {
+          padding: 8px 4px;
+        }
+
+        .sign {
+          margin-top: 22px;
+          text-align: center;
+          font-weight: 700;
+        }
+      </style>
+
       ${buildInvoiceBody(invoiceNumber)}
     `
 
     document.body.appendChild(element)
 
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await new Promise((resolve) => setTimeout(resolve, 700))
+
+    const page = element.querySelector('.page')
 
     const dataUriString = await html2pdf()
       .set({
-        margin: [7, 7, 7, 7],
+        margin: 0,
         filename: `${invoiceNumber}.pdf`,
         image: { type: 'jpeg', quality: 1 },
         html2canvas: {
@@ -527,18 +670,17 @@ export default function AdminInvoices() {
           logging: false,
           scrollX: 0,
           scrollY: 0,
-          windowWidth: 1200,
-          windowHeight: 900,
+          windowWidth: 1123,
+          windowHeight: 794,
         },
         jsPDF: {
-          unit: 'mm',
-          format: 'a4',
+          unit: 'px',
+          format: [1123, 794],
           orientation: 'landscape',
           compress: true,
         },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
       })
-      .from(element)
+      .from(page)
       .outputPdf('datauristring')
 
     document.body.removeChild(element)
