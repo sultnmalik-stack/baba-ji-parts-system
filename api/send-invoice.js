@@ -8,18 +8,29 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { to, subject, message, invoiceNumber } = req.body
+    const { to, subject, message, invoiceNumber, pdfBase64 } = req.body
 
     if (!to) {
       return res.status(400).json({ error: 'Customer email is required' })
     }
 
-    const { data, error } = await resend.emails.send({
+    const payload = {
       from: 'Baba Ji Parts <onboarding@resend.dev>',
       to: [to],
       subject: subject || `Invoice ${invoiceNumber || ''}`,
       text: message,
-    })
+    }
+
+    if (pdfBase64) {
+      payload.attachments = [
+        {
+          filename: `${invoiceNumber || 'invoice'}.pdf`,
+          content: pdfBase64,
+        },
+      ]
+    }
+
+    const { data, error } = await resend.emails.send(payload)
 
     if (error) {
       return res.status(400).json({ error })

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import html2pdf from 'html2pdf.js'
 import { supabase } from '../lib/supabase'
 
 function getGreeting() {
@@ -196,192 +197,7 @@ export default function AdminInvoices() {
     ).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
   }
 
-  async function findOrCreateCustomer() {
-    if (!invoice.customer_name.trim()) return null
-
-    const normalizedPhone = invoice.customer_phone.trim()
-    const normalizedEmail = invoice.customer_email.trim()
-
-    let query = supabase.from('customers').select('*').limit(1)
-
-    if (normalizedPhone) {
-      query = query.eq('phone', normalizedPhone)
-    } else if (normalizedEmail) {
-      query = query.eq('email', normalizedEmail)
-    } else {
-      query = query.eq('name', invoice.customer_name.trim())
-    }
-
-    const { data: existingCustomers, error: findError } = await query
-    if (findError) throw findError
-
-    if (existingCustomers && existingCustomers.length > 0) {
-      const existingCustomer = existingCustomers[0]
-
-      await supabase
-        .from('customers')
-        .update({
-          name: invoice.customer_name,
-          phone: invoice.customer_phone,
-          email: invoice.customer_email,
-          address: invoice.customer_address,
-        })
-        .eq('id', existingCustomer.id)
-
-      return existingCustomer.id
-    }
-
-    const { data: newCustomer, error: createError } = await supabase
-      .from('customers')
-      .insert([
-        {
-          name: invoice.customer_name,
-          phone: invoice.customer_phone,
-          email: invoice.customer_email,
-          address: invoice.customer_address,
-        },
-      ])
-      .select()
-
-    if (createError) throw createError
-
-    return newCustomer?.[0]?.id || null
-  }
-
-  async function sendInvoiceEmail(createdInvoice, invoiceNumber) {
-    if (!invoice.customer_email.trim()) {
-      throw new Error('Customer email is missing.')
-    }
-
-    const response = await fetch('/api/send-invoice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: invoice.customer_email,
-        subject: `Invoice ${invoiceNumber}`,
-        message: emailMessage,
-        invoiceNumber,
-      }),
-    })
-
-    const result = await response.json()
-
-    if (!response.ok) {
-      throw new Error(result.error?.message || result.error || 'Email failed.')
-    }
-
-    await supabase
-      .from('invoices')
-      .update({
-        email_sent: true,
-        email_sent_at: new Date().toISOString(),
-      })
-      .eq('id', createdInvoice.id)
-  }
-
-  async function saveInvoice({ shouldPrint = true, shouldEmail = false } = {}) {
-    setMessage('')
-
-    if (items.length === 0) {
-      setMessage('Add at least one invoice item first.')
-      return
-    }
-
-    if (shouldEmail && !invoice.customer_email.trim()) {
-      setMessage('Customer email is required to send invoice email.')
-      return
-    }
-
-    setSaving(true)
-
-    try {
-      const invoiceNumber = makeInvoiceNumber()
-      const customerId = await findOrCreateCustomer()
-
-      const { data: invoiceData, error: invoiceError } = await supabase
-        .from('invoices')
-        .insert([
-          {
-            ...invoice,
-            customer_id: customerId,
-            invoice_number: invoiceNumber,
-            freight,
-            rounding,
-            subtotal,
-            gst,
-            total,
-            payment_status: invoice.payment_status,
-            payment_method: invoice.payment_method,
-            amount_paid: amountPaid,
-            balance_due: balanceDue,
-            email_subject: `Invoice ${invoiceNumber}`,
-            email_message: emailMessage,
-            email_sent: false,
-          },
-        ])
-        .select()
-
-      if (invoiceError) throw invoiceError
-
-      const createdInvoice = invoiceData[0]
-
-      const invoiceItems = items.map((item, index) => ({
-        invoice_id: createdInvoice.id,
-        line_no: index + 1,
-        source_type: item.source_type,
-        inventory_part_id: item.inventory_part_id,
-        location: item.location,
-        part_number: item.part_number,
-        description: item.description,
-        quantity: Number(item.quantity || 1),
-        qty_bo: Number(item.qty_bo || 0),
-        qty_supplied: Number(item.qty_supplied || 1),
-        unit_price: Number(item.unit_price || 0),
-        gst_code: item.gst_code || 'GST',
-        total: Number(item.quantity || 1) * Number(item.unit_price || 0),
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('invoice_items')
-        .insert(invoiceItems)
-
-      if (itemsError) throw itemsError
-
-      if (markSold) {
-        const inventoryIds = items
-          .filter((item) => item.source_type === 'inventory' && item.inventory_part_id)
-          .map((item) => item.inventory_part_id)
-
-        if (inventoryIds.length > 0) {
-          await supabase
-            .from('parts')
-            .update({ status: 'Sold' })
-            .in('id', inventoryIds)
-        }
-      }
-
-      let emailStatus = ''
-
-      if (shouldEmail) {
-        await sendInvoiceEmail(createdInvoice, invoiceNumber)
-        emailStatus = ' and emailed'
-      }
-
-      setMessage(`Invoice saved${emailStatus}: ${invoiceNumber}`)
-
-      if (shouldPrint) {
-        printInvoice(invoiceNumber)
-      }
-
-      fetchData()
-    } catch (error) {
-      setMessage(error.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function printInvoice(invoiceNumber) {
+  function buildInvoiceHtml(invoiceNumber) {
     const rows = items
       .map((item, index) => {
         const itemTotal = Number(item.quantity || 1) * Number(item.unit_price || 0)
@@ -404,9 +220,7 @@ export default function AdminInvoices() {
       })
       .join('')
 
-    const w = window.open('', '_blank')
-
-    w.document.write(`
+    return `
       <html>
         <head>
           <title>${invoiceNumber}</title>
@@ -541,14 +355,225 @@ export default function AdminInvoices() {
               </div>
             </div>
           </div>
-
-          <script>
-            window.onload = () => window.print()
-          </script>
         </body>
       </html>
-    `)
+    `
+  }
 
+  async function generatePdfBase64(invoiceNumber) {
+    const wrapper = document.createElement('div')
+    wrapper.innerHTML = buildInvoiceHtml(invoiceNumber)
+
+    const dataUriString = await html2pdf()
+      .set({
+        margin: 0,
+        filename: `${invoiceNumber}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+      })
+      .from(wrapper)
+      .outputPdf('datauristring')
+
+    return dataUriString.split(',')[1]
+  }
+
+  async function findOrCreateCustomer() {
+    if (!invoice.customer_name.trim()) return null
+
+    const normalizedPhone = invoice.customer_phone.trim()
+    const normalizedEmail = invoice.customer_email.trim()
+
+    let query = supabase.from('customers').select('*').limit(1)
+
+    if (normalizedPhone) {
+      query = query.eq('phone', normalizedPhone)
+    } else if (normalizedEmail) {
+      query = query.eq('email', normalizedEmail)
+    } else {
+      query = query.eq('name', invoice.customer_name.trim())
+    }
+
+    const { data: existingCustomers, error: findError } = await query
+    if (findError) throw findError
+
+    if (existingCustomers && existingCustomers.length > 0) {
+      const existingCustomer = existingCustomers[0]
+
+      await supabase
+        .from('customers')
+        .update({
+          name: invoice.customer_name,
+          phone: invoice.customer_phone,
+          email: invoice.customer_email,
+          address: invoice.customer_address,
+        })
+        .eq('id', existingCustomer.id)
+
+      return existingCustomer.id
+    }
+
+    const { data: newCustomer, error: createError } = await supabase
+      .from('customers')
+      .insert([
+        {
+          name: invoice.customer_name,
+          phone: invoice.customer_phone,
+          email: invoice.customer_email,
+          address: invoice.customer_address,
+        },
+      ])
+      .select()
+
+    if (createError) throw createError
+
+    return newCustomer?.[0]?.id || null
+  }
+
+  async function sendInvoiceEmail(createdInvoice, invoiceNumber) {
+    if (!invoice.customer_email.trim()) {
+      throw new Error('Customer email is missing.')
+    }
+
+    const pdfBase64 = await generatePdfBase64(invoiceNumber)
+
+    const response = await fetch('/api/send-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: invoice.customer_email,
+        subject: `Invoice ${invoiceNumber}`,
+        message: emailMessage,
+        invoiceNumber,
+        pdfBase64,
+      }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error?.message || result.error || 'Email failed.')
+    }
+
+    await supabase
+      .from('invoices')
+      .update({
+        email_sent: true,
+        email_sent_at: new Date().toISOString(),
+      })
+      .eq('id', createdInvoice.id)
+  }
+
+  async function saveInvoice({ shouldPrint = true, shouldEmail = false } = {}) {
+    setMessage('')
+
+    if (items.length === 0) {
+      setMessage('Add at least one invoice item first.')
+      return
+    }
+
+    if (shouldEmail && !invoice.customer_email.trim()) {
+      setMessage('Customer email is required to send invoice email.')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      const invoiceNumber = makeInvoiceNumber()
+      const customerId = await findOrCreateCustomer()
+
+      const { data: invoiceData, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert([
+          {
+            ...invoice,
+            customer_id: customerId,
+            invoice_number: invoiceNumber,
+            freight,
+            rounding,
+            subtotal,
+            gst,
+            total,
+            payment_status: invoice.payment_status,
+            payment_method: invoice.payment_method,
+            amount_paid: amountPaid,
+            balance_due: balanceDue,
+            email_subject: `Invoice ${invoiceNumber}`,
+            email_message: emailMessage,
+            email_sent: false,
+          },
+        ])
+        .select()
+
+      if (invoiceError) throw invoiceError
+
+      const createdInvoice = invoiceData[0]
+
+      const invoiceItems = items.map((item, index) => ({
+        invoice_id: createdInvoice.id,
+        line_no: index + 1,
+        source_type: item.source_type,
+        inventory_part_id: item.inventory_part_id,
+        location: item.location,
+        part_number: item.part_number,
+        description: item.description,
+        quantity: Number(item.quantity || 1),
+        qty_bo: Number(item.qty_bo || 0),
+        qty_supplied: Number(item.qty_supplied || 1),
+        unit_price: Number(item.unit_price || 0),
+        gst_code: item.gst_code || 'GST',
+        total: Number(item.quantity || 1) * Number(item.unit_price || 0),
+      }))
+
+      const { error: itemsError } = await supabase
+        .from('invoice_items')
+        .insert(invoiceItems)
+
+      if (itemsError) throw itemsError
+
+      if (markSold) {
+        const inventoryIds = items
+          .filter((item) => item.source_type === 'inventory' && item.inventory_part_id)
+          .map((item) => item.inventory_part_id)
+
+        if (inventoryIds.length > 0) {
+          await supabase
+            .from('parts')
+            .update({ status: 'Sold' })
+            .in('id', inventoryIds)
+        }
+      }
+
+      let emailStatus = ''
+
+      if (shouldEmail) {
+        await sendInvoiceEmail(createdInvoice, invoiceNumber)
+        emailStatus = ' and emailed with PDF'
+      }
+
+      setMessage(`Invoice saved${emailStatus}: ${invoiceNumber}`)
+
+      if (shouldPrint) {
+        printInvoice(invoiceNumber)
+      }
+
+      fetchData()
+    } catch (error) {
+      setMessage(error.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function printInvoice(invoiceNumber) {
+    const w = window.open('', '_blank')
+    w.document.write(`
+      ${buildInvoiceHtml(invoiceNumber)}
+      <script>
+        window.onload = () => window.print()
+      </script>
+    `)
     w.document.close()
   }
 
@@ -761,7 +786,7 @@ export default function AdminInvoices() {
             disabled={saving}
             className="rounded-xl bg-blue-500 px-5 py-4 font-black text-white disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Save & Email'}
+            {saving ? 'Saving...' : 'Save & Email PDF'}
           </button>
 
           <button
@@ -769,7 +794,7 @@ export default function AdminInvoices() {
             disabled={saving}
             className="rounded-xl bg-yellow-400 px-5 py-4 font-black text-black disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Save, Print & Email'}
+            {saving ? 'Saving...' : 'Save, Print & Email PDF'}
           </button>
         </div>
       </section>
