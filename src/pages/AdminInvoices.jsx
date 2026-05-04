@@ -496,17 +496,24 @@ export default function AdminInvoices() {
 
   async function generatePdfBase64(invoiceNumber) {
     const element = document.createElement('div')
+
     element.style.position = 'fixed'
-    element.style.left = '-10000px'
+    element.style.left = '0'
     element.style.top = '0'
     element.style.width = '282mm'
-    element.style.background = '#fff'
+    element.style.background = '#ffffff'
+    element.style.zIndex = '9999'
+    element.style.opacity = '1'
+    element.style.pointerEvents = 'none'
+
     element.innerHTML = `
       <style>${buildInvoiceStyles()}</style>
       ${buildInvoiceBody(invoiceNumber)}
     `
 
     document.body.appendChild(element)
+
+    await new Promise((resolve) => setTimeout(resolve, 300))
 
     const dataUriString = await html2pdf()
       .set({
@@ -517,9 +524,11 @@ export default function AdminInvoices() {
           scale: 2,
           useCORS: true,
           backgroundColor: '#ffffff',
+          logging: false,
           scrollX: 0,
           scrollY: 0,
           windowWidth: 1200,
+          windowHeight: 900,
         },
         jsPDF: {
           unit: 'mm',
