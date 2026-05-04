@@ -31,6 +31,7 @@ export default function AdminInvoices() {
   const [message, setMessage] = useState('')
   const [markSold, setMarkSold] = useState(true)
   const [emailMessage, setEmailMessage] = useState(generateEmailMessage())
+  const [saving, setSaving] = useState(false)
 
   const [invoice, setInvoice] = useState({
     customer_name: '',
@@ -247,13 +248,51 @@ export default function AdminInvoices() {
     return newCustomer?.[0]?.id || null
   }
 
-  async function saveInvoice() {
+  async function sendInvoiceEmail(createdInvoice, invoiceNumber) {
+    if (!invoice.customer_email.trim()) {
+      throw new Error('Customer email is missing.')
+    }
+
+    const response = await fetch('/api/send-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: invoice.customer_email,
+        subject: `Invoice ${invoiceNumber}`,
+        message: emailMessage,
+        invoiceNumber,
+      }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error?.message || result.error || 'Email failed.')
+    }
+
+    await supabase
+      .from('invoices')
+      .update({
+        email_sent: true,
+        email_sent_at: new Date().toISOString(),
+      })
+      .eq('id', createdInvoice.id)
+  }
+
+  async function saveInvoice({ shouldPrint = true, shouldEmail = false } = {}) {
     setMessage('')
 
     if (items.length === 0) {
       setMessage('Add at least one invoice item first.')
       return
     }
+
+    if (shouldEmail && !invoice.customer_email.trim()) {
+      setMessage('Customer email is required to send invoice email.')
+      return
+    }
+
+    setSaving(true)
 
     try {
       const invoiceNumber = makeInvoiceNumber()
@@ -321,11 +360,24 @@ export default function AdminInvoices() {
         }
       }
 
-      setMessage(`Invoice saved: ${invoiceNumber}`)
-      printInvoice(invoiceNumber)
+      let emailStatus = ''
+
+      if (shouldEmail) {
+        await sendInvoiceEmail(createdInvoice, invoiceNumber)
+        emailStatus = ' and emailed'
+      }
+
+      setMessage(`Invoice saved${emailStatus}: ${invoiceNumber}`)
+
+      if (shouldPrint) {
+        printInvoice(invoiceNumber)
+      }
+
       fetchData()
     } catch (error) {
       setMessage(error.message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -695,12 +747,31 @@ export default function AdminInvoices() {
           Total: ${total.toFixed(2)} | GST: ${gst.toFixed(2)}
         </div>
 
-        <button
-          onClick={saveInvoice}
-          className="mt-6 w-full rounded-xl bg-green-500 px-5 py-4 font-black text-white"
-        >
-          Save & Print Invoice
-        </button>
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <button
+            onClick={() => saveInvoice({ shouldPrint: true, shouldEmail: false })}
+            disabled={saving}
+            className="rounded-xl bg-green-500 px-5 py-4 font-black text-white disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save & Print'}
+          </button>
+
+          <button
+            onClick={() => saveInvoice({ shouldPrint: false, shouldEmail: true })}
+            disabled={saving}
+            className="rounded-xl bg-blue-500 px-5 py-4 font-black text-white disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save & Email'}
+          </button>
+
+          <button
+            onClick={() => saveInvoice({ shouldPrint: true, shouldEmail: true })}
+            disabled={saving}
+            className="rounded-xl bg-yellow-400 px-5 py-4 font-black text-black disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save, Print & Email'}
+          </button>
+        </div>
       </section>
     </main>
   )
